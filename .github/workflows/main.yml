@@ -5,7 +5,7 @@ on:
     types: [closed]
 
 permissions:
-  contents: write
+  contents: write  # Разрешаем пуш и создание тегов
 
 jobs:
   version_and_changelog:
@@ -80,11 +80,11 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          MESSAGE="*Новая версия проекта!*%0A\
-          Версия: v${{ steps.bump.outputs.new_version }}%0A\
-          Ветка: ${{ github.event.pull_request.base.ref }}%0A\
-          PR: #${{ github.event.pull_request.number }}%0A\
-          Автор: ${{ github.event.pull_request.user.login }}"
+          MESSAGE="✅ *Новая версия проекта!*%0A\
+          📦 Версия: v${{ steps.bump.outputs.new_version }}%0A\
+          🔀 Ветка: ${{ github.event.pull_request.base.ref }}%0A\
+          🧩 PR: #${{ github.event.pull_request.number }}%0A\
+          💬 Автор: ${{ github.event.pull_request.user.login }}"
           
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
           -d chat_id="${TELEGRAM_CHAT_ID}" \
