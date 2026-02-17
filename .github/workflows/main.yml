@@ -1,0 +1,92 @@
+name: Auto Versioning & Telegram Notify
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  version_and_changelog:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Get base branch name
+        id: vars
+        run: |
+          echo "base_branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
+
+      - name: Read current version
+        id: get_version
+        run: |
+          if [ ! -f VERSION ]; then echo "0.0.0" > VERSION; fi
+          CURRENT_VERSION=$(cat VERSION)
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump
+        run: |
+          CURRENT_VERSION=${{ steps.get_version.outputs.current_version }}
+          MAJOR=$(echo $CURRENT_VERSION | cut -d. -f1)
+          MINOR=$(echo $CURRENT_VERSION | cut -d. -f2)
+          PATCH=$(echo $CURRENT_VERSION | cut -d. -f3)
+
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          if [[ "$BRANCH_NAME" == hotfix/* ]]; then
+            PATCH=$((PATCH + 1))
+          elif [[ "$BRANCH_NAME" == feature/* ]]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "$NEW_VERSION" > VERSION
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update CHANGELOG
+        run: |
+          echo "## Version ${{ steps.bump.outputs.new_version }} - $(date +'%Y-%m-%d')" >> CHANGELOG.md
+          echo "- Merged branch: ${{ github.event.pull_request.head.ref }}" >> CHANGELOG.md
+          echo "- Pull request: #${{ github.event.pull_request.number }}" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+
+      - name: Commit & Push version bump
+        run: |
+          git add VERSION CHANGELOG.md
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }}" || echo "No changes to commit"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main
+
+      - name: Create Tag
+        run: |
+          git tag v${{ steps.bump.outputs.new_version }}
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} v${{ steps.bump.outputs.new_version }}
+
+      - name: Send Telegram Notification
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          MESSAGE="*Новая версия проекта!*%0A\
+          Версия: v${{ steps.bump.outputs.new_version }}%0A\
+          Ветка: ${{ github.event.pull_request.base.ref }}%0A\
+          PR: #${{ github.event.pull_request.number }}%0A\
+          Автор: ${{ github.event.pull_request.user.login }}"
+          
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -d chat_id="${TELEGRAM_CHAT_ID}" \
+          -d text="${MESSAGE}" \
+          -d parse_mode="Markdown"
